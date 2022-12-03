@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IP Checker</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+  </head>
+  <body>
+    <div v-scope class="prose prose-lg mx-auto" @vue:mounted="onMount">
+      <h1>{{processor}}</h1>
+
+      <table>
+        <tr>
+          <td>Total Players</td>
+          <td>{{players.total}}</td>
+        </tr>
+        <tr>
+          <td>{{myIp?.countryCode || 'Your Country'}} Players</td>
+          <td>{{getCountryPlayerCount()}}</td>
+        </tr>
+
+        <tr>
+          <td>Suspect</td>
+          <td>{{getSuspect()}}</td>
+        </tr>
+      </table>
+
+      <table>
+        <thead>
+          <tr>
+            <th><abbr title="Packets per second">PPS</abbr></th>
+            <th>IP:PORT</th>
+            <th>Rank</th>
+            <th>Country</th>
+            <th>City</th>
+            <th>ISP</th>
+            <th>Session Time</th>
+            <th><abbr title="Whitelist">WL</abbr></th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr
+            v-for="player in players.bySessionTime"
+            :key="player.address.ip"
+            :style="`background-color: ${getPlayerColor(player)}`"
+          >
+            <td>{{Math.round(player.packets.perSecond * 100) / 100}}</td>
+            <td>
+              <a
+                :href="`https://ip.xxhax.com/?query=${player.address.ip}`"
+                target="_blank"
+                >{{player.address.ip}}:{{player.address.port}}</a
+              >
+              <button type="button" @click="copy(player.address.ip)">CP</button>
+            </td>
+            <td>{{player.rank}}</td>
+            <td :title="player.ip?.countryCode ?? 'ZZ'">
+              {{player.ip?.countryCode ? getCountryEmoji(player.ip.countryCode)
+              : '🏳️'}}
+            </td>
+            <td>{{player.ip?.city ?? "Unknown"}}</td>
+            <td>{{player.ip?.isp || "Unknown"}}</td>
+            <td>{{formatter.format(player.sessionTime)}}</td>
+            <td>
+              <button
+                v-if="isWhitelisted(player)"
+                @click="deleteWhitelist(player)"
+              >
+                -
+              </button>
+              <button v-else @click="addWhitelist(player)">+</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <script type="module">
+      import { createApp } from "https://unpkg.com/petite-vue?module";
+      import { io } from "https://cdn.socket.io/4.3.2/socket.io.esm.min.js";
+
+      const formatter = new Intl.DateTimeFormat(navigator.languages, {
+        hour: "numeric",
+        minute: "numeric",
+        second: "numeric",
+        timeZone: "UTC",
+      });
+
+      createApp({
+        processor: "",
+        players: {},
+        myIp: null,
+        spoofing: null,
+
+        formatter,
+
+        getSuspect() {
+          if (!this.players.byPackets) return "Unknown";
+
+          const suspect = this.players.byPackets.filter(
+            (player) => !this.isWhitelisted(player.address.ip)
+          )[0];
+
+          if (!suspect) return "Unknown";
+
+          return `${suspect.address.ip} from ${suspect.ip.city}, ${suspect.ip.countryCode}`;
+        },
+
+        getCountryEmoji(countryCode) {
+          return String.fromCodePoint(
+            ...countryCode
+              .toUpperCase()
+              .split("")
+              .map((char) => char.codePointAt(0) + 127397)
+          );
+        },
+
+        getPlayerColor(player) {
+          const colors = {
+            1: "#fbbf24",
+            2: "#cbd5e1",
+            3: "#d97706",
+          };
+
+          if (this.isWhitelisted(player)) return "#6ee7b7";
+
+          return colors[player.rank] || "transparent";
+        },
+
+        getCountryPlayerCount() {
+          if (!this.players.byPackets) return 0;
+
+          return this.players.byPackets.filter(
+            (s) => s.ip && s.ip.countryCode === this.myIp.countryCode
+          ).length;
+        },
+
+        copy(ip) {
+          navigator.clipboard.writeText(ip);
+        },
+
+        addWhitelist(ip) {},
+
+        deleteWhitelist(ip) {},
+
+        isWhitelisted(player) {
+          return false;
+        },
+
+        onMount() {
+          const socket = io();
+
+          socket.on("update", (state) => {
+            console.log({ state });
+
+            this.processor = state.processor.name;
+            this.myIp = state.currentIp;
+            this.players = state.players;
+            this.spoofing = state.spoofing;
+            const players = state.players;
+
+            this.players = {
+              total: players.length,
+              byPackets: players
+                .slice()
+                .sort((a, b) => b.packets.perSecond - a.packets.perSecond),
+              bySessionTime: players
+                .slice()
+                .sort((a, b) => b.sessionTime - a.sessionTime),
+            };
+          });
+        },
+      }).mount();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../db/capture.db"
+}
+
+model Ip {
+  value       String  @id
+  countryCode String
+  city        String
+  isp         String
+  whitelist   Boolean @default(false)
+
+  players Player[]
+
+  @@map("ips")
+}
+
+model Player {
+  nick String @id
+  ips  Ip[]
+
+  @@map("players")
+}
